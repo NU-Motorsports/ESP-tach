@@ -15,7 +15,9 @@ const byte numReadings = 2;                         //Number of readings to cons
 volatile unsigned long lastMeasuredTime = 0;
 volatile unsigned long pulsePeriod = zeroTimeout+1000;
 volatile unsigned long averagePeriod = zeroTimeout+1000;
-
+unsigned int zeroDebounceExtra = 0;
+unsigned int lastMeasuredTimeBuffer = lastMeasuredTime;
+unsigned int currentTime = 0;
 
 
 void pulseEvent(){
@@ -34,12 +36,24 @@ void setup() {
   pinMode(ledPin,OUTPUT);
   attachInterrupt(digitalPinToInterrupt(tachPin), pulseEvent, FALLING);
 
-  delay(1000);  //Delay so no negative values occur right at startup
-
+  //Delay so no negative values occur right at startup
+  delay(1000);
 }
 
 
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  //
+  lastMeasuredTimeBuffer = lastMeasuredTime;          //Buffer time so that interrupt doesn't mess with the math
+  currentTime = esp_timer_get_time();
+
+  int frequency = 10000000000/pulsePeriod; 
+  if(pulsePeriod > zeroTimeout - zeroDebounceExtra || currentTime - lastMeasuredTimeBuffer > zeroTimeout - zeroDebounceExtra){
+    frequency = 0;                                    // Set frequency as 0
+    zeroDebounceExtra = 2000;                         // Change the threshold a little so it doesn't bounce
+  }else{
+    zeroDebounceExtra = 0;                            // Reset the threshold to the normal value so it doesn't bounce
+  }
+
+
 }
