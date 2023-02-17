@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <driver/gpio.h>
+#include <driver/can.h>
 
 
 //IO Variables
@@ -18,6 +20,24 @@ volatile unsigned long averagePeriod = zeroTimeout+1000;
 unsigned int zeroDebounceExtra = 0;
 unsigned int lastMeasuredTimeBuffer = lastMeasuredTime;
 unsigned int currentTime = 0;
+
+
+void setup_can_driver(){      //Function for setting up CAN driver
+  can_general_config_t general_config={
+    .mode = CAN_MODE_NORMAL,
+    .tx_io = (gpio_num_t)GPIO_NUM_5,
+    .rx_io = (gpio_num_t)GPIO_NUM_4,
+    .clkout_io = (gpio_num_t)CAN_IO_UNUSED,
+    .bus_off_io = (gpio_num_t)CAN_IO_UNUSED,
+    .tx_queue_len = 0,     //0 for non transmitting
+    .rx_queue_len = 65,
+    .alerts_enabled = CAN_ALERT_ALL,
+    .clkout_divider = 0
+  
+  };
+
+  can_timing_config_t timing_config = CAN_TIMING_CONFIG_1000KBITS();   //Set Bus Speed to 1000 kbit/s
+  can_filter_config_t filter_config = CAN_FILTER_CONFIG_ACCEPT_ALL();
 
 
 void pulseEvent(){
