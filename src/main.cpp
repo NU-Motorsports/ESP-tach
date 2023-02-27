@@ -7,6 +7,7 @@
 const byte tachPin = 8;
 const byte ledPin = 2;
 const byte errorPin = 9;
+//CAN pins are configured in the setup_twai_driver() Function
 
 //Tach Configuration
 const byte numMagnets = 2;                          //Number of magnets around specific shaft
@@ -20,6 +21,7 @@ volatile unsigned long averagePeriod = zeroTimeout+1000;
 unsigned int zeroDebounceExtra = 0;
 unsigned int lastMeasuredTimeBuffer = lastMeasuredTime;
 unsigned int currentTime = 0;
+unsigned int RPM = 0;
 
 
 void setup_twai_driver(){      //Function for setting up CAN driver
@@ -68,9 +70,17 @@ void setup() {
 void loop() {
   //
   lastMeasuredTimeBuffer = lastMeasuredTime;          //Buffer time so that interrupt doesn't mess with the math
-  currentTime = esp_timer_get_time();
+  currentTime = esp_timer_get_time();                 //Set time for this cycle
+  //Correction loop in case last measured time becomes larger than currentTime
+  if(currentTime < lastMeasuredTimeBuffer)
+  {
+    lastMeasuredTimeBuffer = currentTime;
+  }
 
+
+  //Calculate Frequency
   int frequency = 10000000000/pulsePeriod; 
+  //Timeout if frequency is too low
   if(pulsePeriod > zeroTimeout - zeroDebounceExtra || currentTime - lastMeasuredTimeBuffer > zeroTimeout - zeroDebounceExtra){
     frequency = 0;                                    // Set frequency as 0
     zeroDebounceExtra = 2000;                         // Change the threshold a little so it doesn't bounce
@@ -78,14 +88,18 @@ void loop() {
     zeroDebounceExtra = 0;                            // Reset the threshold to the normal value so it doesn't bounce
   }
 
+
+  //
+  RPM = ((frequency/10000)/(numMagnets))*60;
+
   //Configure message to transmit
   twai_message_t message;
   message.identifier = 0xC8;
   //message.flags = TWAI_MSG_FLAG_EXTD;
   message.data_length_code = 2;
-  for (int i = 0; i < 4; i++) {
-      message.data[i] = 0;
-  }
+  message.data[0] = (uint8_t) RPM >> 8;
+  message.data[1] = (uint8_t) RPM && 0xFF;
+  
 
   //Queue message for transmission
   if (twai_transmit(&message, pdMS_TO_TICKS(1000)) == ESP_OK) {
