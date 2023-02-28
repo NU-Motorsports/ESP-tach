@@ -4,7 +4,7 @@
 
 
 //IO Variables
-const byte tachPin = 8;
+const byte tachPin = 33;
 const byte ledPin = 2;
 const byte errorPin = 9;
 //CAN pins are configured in the setup_twai_driver() Function
@@ -40,6 +40,25 @@ void setup_twai_driver(){      //Function for setting up CAN driver
 
   twai_timing_config_t timing_config = TWAI_TIMING_CONFIG_500KBITS();   //Set Bus Speed to 1000 kbit/s
   twai_filter_config_t filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
+  esp_err_t error;
+  error = twai_driver_install(&general_config,&timing_config,&filter_config);
+
+  if(error==ESP_OK){
+    Serial.println("CAN Driver Installation Okay");
+  }else{
+    Serial.println("CAN Driver Installation Failed");
+    return;
+  }
+
+  error = twai_start();
+
+  if(error ==ESP_OK){
+    Serial.println("CAN Driver Started");
+  }else{
+    Serial.println("CAN Driver Failed to Start");
+  }
+
 }
 
 void pulseEvent(){
@@ -75,6 +94,7 @@ void loop() {
   if(currentTime < lastMeasuredTimeBuffer)
   {
     lastMeasuredTimeBuffer = currentTime;
+    Serial.println("Inequality Triggered");
   }
 
 
@@ -91,15 +111,22 @@ void loop() {
 
   //
   RPM = ((frequency/10000)/(numMagnets))*60;
+  Serial.println(RPM);
 
   //Configure message to transmit
   twai_message_t message;
   message.identifier = 0xC8;
   //message.flags = TWAI_MSG_FLAG_EXTD;
-  message.data_length_code = 2;
-  message.data[0] = (uint8_t) RPM >> 8;
-  message.data[1] = (uint8_t) RPM && 0xFF;
+  byte n = RPM / 255;
+  message.data_length_code = n+1;
+  byte remainder = RPM % 255;
+  message.data_length_code = n+1;
+  for (int i = 0; i < n; i++) {
+    message.data[i] = (uint8_t) 255;
+  }
+  message.data[n] = (uint8_t) remainder;
   
+
 
   //Queue message for transmission
   if (twai_transmit(&message, pdMS_TO_TICKS(1000)) == ESP_OK) {
