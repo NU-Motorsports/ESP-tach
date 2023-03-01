@@ -10,7 +10,7 @@ const byte errorPin = 9;
 //CAN pins are configured in the setup_twai_driver() Function
 
 //Tach Configuration
-const byte numMagnets = 2;                          //Number of magnets around specific shaft
+const byte numMagnets = 6;                          //Number of magnets around specific shaft
 const unsigned long zeroTimeout = 100000;           //Time before value zeros out. Lower for fast response, higher for reading low rpms
 const byte numReadings = 2;                         //Number of readings to consider for smoothing
 
