@@ -117,9 +117,9 @@ void loop() {
   twai_message_t message;
   message.identifier = 0xC8;
   //message.flags = TWAI_MSG_FLAG_EXTD;
-  byte n = RPM / 255;
+  uint8_t n = RPM / 255;
   message.data_length_code = n+1;
-  byte remainder = RPM % 255;
+  uint8_t remainder = RPM % 255;
   message.data_length_code = n+1;
   for (int i = 0; i < n; i++) {
     message.data[i] = (uint8_t) 255;
