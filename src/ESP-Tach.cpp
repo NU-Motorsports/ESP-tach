@@ -130,9 +130,9 @@ void loop() {
 
   //Queue message for transmission
   if (twai_transmit(&message, pdMS_TO_TICKS(1000)) == ESP_OK) {
-      printf("Message queued for transmission\n");
+      //printf("Message queued for transmission\n");
   } else {
-      printf("Failed to queue message for transmission\n");
+      //printf("Failed to queue message for transmission\n");
   }
 
 
