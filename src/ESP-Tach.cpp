@@ -99,7 +99,7 @@ void loop() {
 
 
   //Calculate Frequency
-  int frequency = 10000000000/pulsePeriod; 
+  float frequency = 10000000000/pulsePeriod; 
   //Timeout if frequency is too low
   if(pulsePeriod > zeroTimeout - zeroDebounceExtra || currentTime - lastMeasuredTimeBuffer > zeroTimeout - zeroDebounceExtra){
     frequency = 0;                                    // Set frequency as 0
