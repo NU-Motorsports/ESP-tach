@@ -10,7 +10,7 @@ const byte errorPin = 9;
 //CAN pins are configured in the setup_twai_driver() Function
 
 //Tach Configuration
-const byte numMagnets = 6;                          //Number of magnets around specific shaft
+const byte numMagnets = 3;                          //Number of magnets around specific shaft
 const unsigned long zeroTimeout = 100000;           //Time before value zeros out. Lower for fast response, higher for reading low rpms
 const byte numReadings = 2;                         //Number of readings to consider for smoothing
 
@@ -130,7 +130,8 @@ void loop() {
 
   //Queue message for transmission
   if (twai_transmit(&message, pdMS_TO_TICKS(1000)) == ESP_OK) {
-      //printf("Message queued for transmission\n");
+      Serial.print("RPM: ");
+      Serial.println(RPM);
   } else {
       //printf("Failed to queue message for transmission\n");
   }
