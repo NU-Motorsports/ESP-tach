@@ -11,7 +11,7 @@ const byte errorPin = 9;
 
 //Tach Configuration
 const byte numMagnets = 3;                          //Number of magnets around specific shaft
-const unsigned long zeroTimeout = 100000;           //Time before value zeros out. Lower for fast response, higher for reading low rpms
+const unsigned long zeroTimeout = 1000000;           //Time before value zeros out. Lower for fast response, higher for reading low rpms
 const byte numReadings = 2;                         //Number of readings to consider for smoothing
 
 //Tach Variables 
@@ -111,7 +111,7 @@ void loop() {
 
   //
   RPM = ((frequency/10000)/(numMagnets))*60;
-  Serial.println(RPM);
+  //Serial.println(RPM);
 
   //Configure message to transmit
   twai_message_t message;
