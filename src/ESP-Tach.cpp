@@ -7,6 +7,8 @@
 const byte tachPin = 33;
 const byte ledPin = 2;
 const byte errorPin = 9;
+const byte modSelect = 22;
+const byte modSelect2 = 19;
 //CAN pins are configured in the setup_twai_driver() Function
 
 //Tach Configuration
@@ -77,6 +79,12 @@ void setup() {
   pinMode(ledPin,OUTPUT);
   attachInterrupt(digitalPinToInterrupt(tachPin), pulseEvent, FALLING);
 
+  pinMode(modSelect, INPUT);
+  digitalRead(modSelect);
+
+  pinMode(modSelect2, INPUT);
+  digitalRead(modSelect2);
+
   //CAN Setup
   setup_twai_driver();
 
@@ -115,7 +123,26 @@ void loop() {
 
   //Configure message to transmit
   twai_message_t message;
-  message.identifier = 0xC8;
+
+  if(digitalRead(modSelect) == HIGH && digitalRead(modSelect2) == HIGH) {
+    message.identifier = 0xA7;
+  }
+
+
+  if(digitalRead(modSelect) == LOW && digitalRead(modSelect2) == LOW) {
+    message.identifier = 0xA6;
+  }
+
+    if(digitalRead(modSelect) == HIGH && digitalRead(modSelect2) == LOW) {
+    message.identifier = 0xC7;
+  }
+
+
+  if(digitalRead(modSelect) == LOW && digitalRead(modSelect2) == HIGH) {
+    message.identifier = 0xC6;
+  }
+
+  // message.identifier = 0xC8;
   //message.flags = TWAI_MSG_FLAG_EXTD;
   uint8_t n = RPM / 255;
   message.data_length_code = n+1;
@@ -126,6 +153,7 @@ void loop() {
   }
   message.data[n] = (uint8_t) remainder;
   
+
 
 
   //Queue message for transmission
