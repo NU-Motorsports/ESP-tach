@@ -12,7 +12,7 @@ const byte modSelect2 = 19;
 //CAN pins are configured in the setup_twai_driver() Function
 
 //Tach Configuration
-const byte numMagnets = 3;                          //Number of magnets around specific shaft
+const byte numMagnets = 1;                          //Number of magnets around specific shaft
 const unsigned long zeroTimeout = 1000000;           //Time before value zeros out. Lower for fast response, higher for reading low rpms
 const byte numReadings = 2;                         //Number of readings to consider for smoothing
 
@@ -119,15 +119,14 @@ void loop() {
 
   //
   RPM = ((frequency/10000)/(numMagnets))*60;
-  //Serial.println(RPM);
 
   //Configure message to transmit
   twai_message_t message;
 
+  // 
   if(digitalRead(modSelect) == HIGH && digitalRead(modSelect2) == HIGH) {
-    message.identifier = 0xA7;
+    message.identifier = 0xC8;
   }
-
 
   if(digitalRead(modSelect) == LOW && digitalRead(modSelect2) == LOW) {
     message.identifier = 0xA6;
@@ -137,31 +136,34 @@ void loop() {
     message.identifier = 0xC7;
   }
 
-
   if(digitalRead(modSelect) == LOW && digitalRead(modSelect2) == HIGH) {
     message.identifier = 0xC6;
   }
 
-  // message.identifier = 0xC8;
   //message.flags = TWAI_MSG_FLAG_EXTD;
   uint8_t n = RPM / 255;
-  message.data_length_code = n+1;
   uint8_t remainder = RPM % 255;
-  message.data_length_code = n+1;
-  for (int i = 0; i < n; i++) {
-    message.data[i] = (uint8_t) 255;
+
+  if(n == 0 && remainder == 0) {
+    message.data_length_code = 0;
+    message.data[0] = 0x00;
+  } else {
+    message.data_length_code = n+1;
+    
+    for (int i = 0; i < n; i++) {
+      message.data[i] = (uint8_t) 255;
+    }
+    message.data[n] = (uint8_t) (RPM % 255);
   }
-  message.data[n] = (uint8_t) remainder;
+
   
-
-
-
   //Queue message for transmission
   if (twai_transmit(&message, pdMS_TO_TICKS(1000)) == ESP_OK) {
-      Serial.print("RPM: ");
-      Serial.println(RPM);
+    Serial.print("RPM: ");
+    Serial.println(RPM);
+
   } else {
-      //printf("Failed to queue message for transmission\n");
+        //printf("Failed to queue message for transmission\n");
   }
 
 
