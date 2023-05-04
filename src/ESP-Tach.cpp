@@ -33,8 +33,7 @@ bool engine_rpm() {
   return digitalRead(MOD_SELECT_3) == HIGH;
 }
 
-twai_message_t configure_message() {
-  twai_message_t message;
+void configure_message(twai_message_t &message) {
 
   if (gearbox_tach()) {
     message.identifier = 0xC8;
@@ -56,8 +55,6 @@ twai_message_t configure_message() {
   else {
     message.identifier = 0xC6;
   }
-
-  return message.data;
 }
 
 // Set up CAN driver
@@ -150,54 +147,49 @@ void loop() {
 
   RPM = ((frequency/10000)/(NUM_OF_MAGNETS)) * 60;
 
-  twai_message_t message = configure_message();
+  twai_message_t message;
+  configure_message(message);
 
   // if (RPM == 0) {
   //   message.data[0] = 0x00;
   //   message.data_length_code = 1;
 
   unsigned int num = RPM;
+
+  Serial.println();
+  Serial.print(message.identifier);
+  Serial.print(" wants to send: ");
+  Serial.println(num);
+  
   int i = 0;
 
   // num = 3451
 
-  while (num > 0) {
-    int digit = num % 0x0a; // 0x0a = 19
+  while (num >= 0) {
+    uint8_t digit = num % 0x0a; // 0x0a = 10
     message.data[i] = digit;
     Serial.print(message.data[i]);
-    Serial.print("   ");
-    num /= 0x0a; 
+    num /= 0x0a; // num /= 10
     i += 1;
+    if (num == 0) {
+      break;
+    }
   }
-
-  Serial.print(message.data_length_code);
-  Serial.print(", ");
-}
-
-
-  // uint8_t n = RPM / 255;
-  // uint8_t remainder = RPM % 255;
-
-  // if(n == 0 && remainder == 0) {
-  //   message.data_length_code = 0;
-  //   message.data[0] = 0x00;
-  // } else {
-  //   message.data_length_code = n+1;
-    
-  //   for (int i = 0; i < n; i++) {
-  //     message.data[i] = (uint8_t) 255;
-  //   }
-  //   message.data[n] = (uint8_t) (RPM % 255);
-  // }
-
+  message.data_length_code = i;
+  Serial.println();
+  Serial.print("Data length of code is: ");
+  Serial.println(message.data_length_code);
   
   //Queue message for transmission
-  if(twai_transmit(&message, pdMS_TO_TICKS(1000))==ESP_OK) {
-    Serial.print("RPM: ");
-    Serial.print(RPM);
-    Serial.print("   Data: ");
+  if (twai_transmit(&message, pdMS_TO_TICKS(1000))== ESP_OK) {
+    Serial.print(int(message.identifier));
+    Serial.print(" is sending: [");
+    for (int x = 0; x < i; x++) {
+      Serial.print(message.data[x]);
+    }
+    Serial.println("]");
+    
   } else {
-        //printf("Failed to queue message for transmission\n");
+    Serial.println("Failed to queue message for transmission");
   }
-
 }
