@@ -2,58 +2,71 @@
 #include <driver/gpio.h>
 #include <driver/twai.h>
 
+
+
 // IO CONSTANTS
-const byte TACH_PIN = 33;
+byte TACH_PIN = 7;
 const byte LED_PIN = 2;
-// const byte ERROR_PIN = 9;
-const byte MOD_SELECT = 22;
-const byte MOD_SELECT_2 = 19;
-const byte MOD_SELECT_3 = 15;
+const byte ERROR_PIN = 3;
+const byte MOD_SELECT = 0;
+const byte MOD_SELECT_2 = 2;
+const byte MOD_SELECT_3 = 19;
 // CAN pins are configured in the setup_twai_driver() Function
 
+
 // TACH CONFIGURATION CONSTANT
-const byte NUM_OF_MAGNETS = 1;           // Number of magnets around specific shaft
+byte NUM_OF_MAGNETS = 1;           // Number of magnets around specific shaft
 const unsigned long TIMEOUT = 1000000;   // Time before value zeros out. Lower for fast response, higher for reading low rpms
-// const byte NUM_OF_READINGS = 2;          // Number of readings to consider for smoothing
 
 // Tach Variables 
 volatile unsigned long last_measured_time = 0;
 volatile unsigned long pulse_period = TIMEOUT + 1000;
-// volatile unsigned long average_period = TIMEOUT + 1000;
 unsigned int zero_debounce_extra = 0;
 unsigned int last_measured_time_buffer = last_measured_time;
 unsigned int current_time = 0;
 unsigned int RPM = 0;
 
+
+
+//Module Select Funcions
+bool engine_rpm() {
+  return digitalRead(MOD_SELECT) == LOW && digitalRead(MOD_SELECT_2) == LOW && digitalRead(MOD_SELECT_3) == LOW;
+}
 bool gearbox_tach() {
-  return digitalRead(MOD_SELECT) == HIGH && digitalRead(MOD_SELECT_2) == HIGH;
+  return digitalRead(MOD_SELECT)==LOW && digitalRead(MOD_SELECT_2)==LOW && digitalRead(MOD_SELECT_3)==HIGH;
+}
+bool driveshaft_tach() {
+  return digitalRead(MOD_SELECT)==LOW && digitalRead(MOD_SELECT_2)==HIGH && digitalRead(MOD_SELECT_3)==LOW;
+}
+bool left_sprag_tach() {
+  return digitalRead(MOD_SELECT)==LOW && digitalRead(MOD_SELECT_2)==HIGH && digitalRead(MOD_SELECT_3)==HIGH;
+}
+bool right_sprag_tach() {
+  return digitalRead(MOD_SELECT) == HIGH && digitalRead(MOD_SELECT_2) == LOW && digitalRead(MOD_SELECT_3) == LOW;
 }
 
-bool engine_rpm() {
-  return digitalRead(MOD_SELECT_3) == HIGH;
-}
+
 
 void configure_message(twai_message_t &message) {
 
-  if (gearbox_tach()) {
-    message.identifier = 0xC8;
-  }
-
-  else if (engine_rpm()) {
+  if (engine_rpm()) {
     message.identifier = 0xD0;
   }
 
-  else if (digitalRead(MOD_SELECT) == LOW && digitalRead(MOD_SELECT_2) == LOW) {
-    message.identifier = 0xA6;
-  }
-  
-  else if(digitalRead(MOD_SELECT) == HIGH && digitalRead(MOD_SELECT_2) == LOW) {
-    message.identifier = 0xC7;
+  else if (gearbox_tach()) {
+    message.identifier = 0xC9;
   }
 
-  // else if (digitalRead(MOD_SELECT) == LOW && digitalRead(MOD_SELECT_2) == HIGH) {
-  else {
-    message.identifier = 0xC6;
+  else if(driveshaft_tach()) {
+    message.identifier = 0xCB;
+  }
+  
+  else if(left_sprag_tach()) {
+    message.identifier = 0x13A;
+  }
+
+  else if(right_sprag_tach()) {
+    message.identifier = 0x13B;
   }
 }
 
@@ -107,11 +120,16 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   attachInterrupt(digitalPinToInterrupt(TACH_PIN), pulseEvent, FALLING);
 
+  //Module Selection
   pinMode(MOD_SELECT, INPUT);
-  digitalRead(MOD_SELECT);
-
   pinMode(MOD_SELECT_2, INPUT);
-  digitalRead(MOD_SELECT_2);
+  pinMode(MOD_SELECT_3, INPUT);
+  if(digitalRead(MOD_SELECT)==0 & digitalRead(MOD_SELECT_2)==0 & digitalRead(MOD_SELECT_3)==0){
+    //Engine Tach
+    TACH_PIN = 7;
+
+
+  }
 
   // CAN Setup
   setup_twai_driver();
