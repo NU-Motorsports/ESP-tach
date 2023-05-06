@@ -1,11 +1,18 @@
 #include <Arduino.h>
 #include <driver/gpio.h>
 #include <driver/twai.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <WebServer.h>
+#include <ESPmDNS.h>
+#include <Update.h>
 
 
 
 // IO CONSTANTS
 byte TACH_PIN = 7;
+const byte HALL_PIN = 7;
+const byte DIG_PIN = 8;
 const byte LED_PIN = 2;
 const byte ERROR_PIN = 3;
 const byte MOD_SELECT = 0;
@@ -25,6 +32,15 @@ unsigned int zero_debounce_extra = 0;
 unsigned int last_measured_time_buffer = last_measured_time;
 unsigned int current_time = 0;
 unsigned int RPM = 0;
+
+//OTA Update Variables
+const char* host = "Tach";
+const char* ssid = "baja";
+const char* password = "bajabaja";
+
+
+
+/*****************Funcions*********************/
 
 
 
@@ -46,7 +62,34 @@ bool right_sprag_tach() {
 }
 
 
+//Tach Setup Functions
+void configure_tach(){
+  if (engine_rpm()) {
+    TACH_PIN = DIG_PIN;
+    NUM_OF_MAGNETS = 1;
+    
+  }
 
+  else if (gearbox_tach()) {
+    TACH_PIN = HALL_PIN;
+    NUM_OF_MAGNETS = 3;
+  }
+
+  else if(driveshaft_tach()) {
+    TACH_PIN = HALL_PIN;
+    NUM_OF_MAGNETS = 2;
+  }
+  
+  else if(left_sprag_tach()) {
+    TACH_PIN = HALL_PIN;
+    NUM_OF_MAGNETS = 3;
+  } else if(right_sprag_tach()){
+    TACH_PIN = HALL_PIN;
+    NUM_OF_MAGNETS = 3;
+  }
+}
+
+//CAN Functions
 void configure_message(twai_message_t &message) {
 
   if (engine_rpm()) {
@@ -70,7 +113,6 @@ void configure_message(twai_message_t &message) {
   }
 }
 
-// Set up CAN driver
 void setup_twai_driver() {      
   twai_general_config_t general_config={
     .mode = TWAI_MODE_NORMAL,
@@ -106,15 +148,29 @@ void setup_twai_driver() {
 
 }
 
+
+//Tach Functions
 void pulseEvent(){
   pulse_period = esp_timer_get_time() - last_measured_time;
   last_measured_time = esp_timer_get_time();
 }
 
+
+
+/************Setup***************/
+
+
+
 void setup() {
   // Serial Setup
   Serial.begin(115200);
   
+  //Setup Tach
+  configure_tach();
+
+
+  //Setup CAN
+
   // Pin Setup
   pinMode(TACH_PIN, INPUT);
   pinMode(LED_PIN, OUTPUT);
@@ -143,7 +199,19 @@ void setup() {
   delay(1000);
 }
 
+
+
+/**********************Loop*************************/
+
+
+
 void loop() {
+  if(digitalRead(TACH_PIN) == HIGH){
+    digitalWrite(LED_PIN, HIGH);
+  } else if(digitalRead(TACH_PIN ==LOW)){
+    digitalWrite(LED_PIN, LOW);
+  }
+
   last_measured_time_buffer = last_measured_time;  // Buffer time so that interrupt doesn't mess with the math
   current_time = esp_timer_get_time();
 
@@ -168,20 +236,10 @@ void loop() {
   twai_message_t message;
   configure_message(message);
 
-  // if (RPM == 0) {
-  //   message.data[0] = 0x00;
-  //   message.data_length_code = 1;
 
   unsigned int num = RPM;
-
-  Serial.println();
-  Serial.print(message.identifier);
-  Serial.print(" wants to send: ");
-  Serial.println(num);
   
   int i = 0;
-
-  // num = 3451
 
   while (num >= 0) {
     uint8_t digit = num % 0x0a; // 0x0a = 10
@@ -210,4 +268,5 @@ void loop() {
   } else {
     Serial.println("Failed to queue message for transmission");
   }
+
 }
