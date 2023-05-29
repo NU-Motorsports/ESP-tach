@@ -12,7 +12,7 @@ byte TACH_PIN = 7;
 const byte HALL_PIN = 7;
 const byte DIG_PIN = 8;
 const byte LED_PIN = 2;
-const byte ERROR_PIN = 3;
+const byte ERROR_PIN = 1;
 const byte MOD_SELECT = 0;
 const byte MOD_SELECT_2 = 1;
 const byte MOD_SELECT_3 = 19;
@@ -36,25 +36,27 @@ unsigned int RPM = 0;
 
 
 //OTA Update Variables
-const char* host = "ESP32";
-const char* ssid = "baja";
+char* host = "TACH";
+const char* ssid = "NUM23";
 const char* password = "EatSand1";
 byte OTA_SETUP_INDEX = 0;
 
 //OTA Configuration
 WebServer server(80);
+
 /* Style */
 String style =
 "<style>#file-input,input{width:100%;height:44px;border-radius:4px;margin:10px auto;font-size:15px}"
-"input{background:#f1f1f1;border:0;padding:0 15px}body{background:#3498db;font-family:sans-serif;font-size:14px;color:#777}"
+"input{background:#f1f1f1;border:0;padding:0 15px}body{background:#db3434;font-family:sans-serif;font-size:14px;color:#777}"
 "#file-input{padding:0;border:1px solid #ddd;line-height:44px;text-align:left;display:block;cursor:pointer}"
-"#bar,#prgbar{background-color:#f1f1f1;border-radius:10px}#bar{background-color:#3498db;width:0%;height:10px}"
+"#bar,#prgbar{background-color:#f1f1f1;border-radius:10px}#bar{background-color:#db3434;width:0%;height:10px}"
 "form{background:#fff;max-width:258px;margin:75px auto;padding:30px;border-radius:5px;text-align:center}"
-".btn{background:#3498db;color:#fff;cursor:pointer}</style>";
+".btn{background:#db3434;color:#fff;cursor:pointer}</style>";
+
 /* Login page */
 String loginIndex = 
 "<form name=loginForm>"
-"<h1>ESP32 Login</h1>"
+"<h1>TACH Login</h1>"
 "<input name=userid placeholder='User ID'> "
 "<input name=pwd placeholder=Password type=Password> "
 "<input type=submit onclick=check(this.form) class=btn value=Login></form>"
@@ -66,6 +68,7 @@ String loginIndex =
 "{alert('Error Password or Username')}"
 "}"
 "</script>" + style;
+ 
 /* Server Index Page */
 String serverIndex = 
 "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
@@ -134,42 +137,38 @@ bool right_sprag_tach() {
 
 //Tach Setup Functions
 void configure_tach(){
-  // if (digitalRead(MOD_SELECT) == LOW && digitalRead(MOD_SELECT_2) == LOW && digitalRead(MOD_SELECT_3) == LOW) {   //ENGINE TACH
-  //   TACH_PIN = DIG_PIN;
-  //   NUM_OF_MAGNETS = 1;
-  //   CAN_IDENTIFIER = 0xD0;
-  //   //host = "EngineTach";
-  //   Serial.println("Engine");
-  // } 
-  // if (digitalRead(MOD_SELECT)==LOW && digitalRead(MOD_SELECT_2)==LOW && digitalRead(MOD_SELECT_3)==HIGH) {
-  //   TACH_PIN = HALL_PIN;
-  //   NUM_OF_MAGNETS = 3;
-  //   CAN_IDENTIFIER = 0xC8;
-  //   Serial.println("Gbox");
-  //   //host = "GearboxTach";
-  // } else if(driveshaft_tach()) {
-  //   TACH_PIN = HALL_PIN;
-  //   NUM_OF_MAGNETS = 2;
-  //   CAN_IDENTIFIER = 0xCB;
-  //   Serial.println("Driveshaft");
-  //   //host = "DriveshaftTach";
-  // } else if(left_sprag_tach()) {
-  //   TACH_PIN = HALL_PIN;
-  //   NUM_OF_MAGNETS = 3;
-  //   CAN_IDENTIFIER = 0x13A;
-  //   Serial.println("Left Sprag");
-  //   //host = "LeftSpragTach";
-  // } else if(right_sprag_tach()){
-  //   TACH_PIN = HALL_PIN;
-  //   NUM_OF_MAGNETS = 3;
-  //   CAN_IDENTIFIER = 0x13B;
-  //   Serial.println("Right Sprag");
-  //   //host = "RightSpragTach";
-  // }
-  TACH_PIN = HALL_PIN;
-  NUM_OF_MAGNETS = 3;
-  CAN_IDENTIFIER = 0xC8;
-  Serial.println("Gbox");
+  if (engine_rpm()) {   //ENGINE TACH
+    TACH_PIN = DIG_PIN;
+    NUM_OF_MAGNETS = 1;
+    CAN_IDENTIFIER = 0xD0;
+    host = "EngineTach";
+    Serial.println("Engine");
+  } 
+  if (gearbox_tach()) {
+    TACH_PIN = HALL_PIN;
+    NUM_OF_MAGNETS = 3;
+    CAN_IDENTIFIER = 0xC8;
+    Serial.println("Gbox");
+    host = "GearboxTach";
+  } else if(driveshaft_tach()) {
+    TACH_PIN = HALL_PIN;
+    NUM_OF_MAGNETS = 2;
+    CAN_IDENTIFIER = 0xCB;
+    Serial.println("Driveshaft");
+    host = "DriveshaftTach";
+  } else if(left_sprag_tach()) {
+    TACH_PIN = HALL_PIN;
+    NUM_OF_MAGNETS = 3;
+    CAN_IDENTIFIER = 0x13A;
+    Serial.println("Left Sprag");
+    host = "LeftSpragTach";
+  } else if(right_sprag_tach()){
+    TACH_PIN = HALL_PIN;
+    NUM_OF_MAGNETS = 3;
+    CAN_IDENTIFIER = 0x13B;
+    Serial.println("Right Sprag");
+    host = "RightSpragTach";
+  }
 }
 
 
@@ -218,80 +217,25 @@ void pulseEvent(){
 
 
 //OTA Functions
-void OTA(){
-  if(OTA_SETUP_INDEX==0){
-    // Connect to WiFi network
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid,password);
-    Serial.println("");
-
-    // Wait for connection
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
-    }
-    Serial.println("");
-    Serial.print("Connected to ");
-    Serial.println(ssid);
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-
-    /*use mdns for host name resolution*/
-    if (!MDNS.begin(host)) { //http://esp32.local
-      Serial.println("Error setting up MDNS responder!");
-      while (1) {
-        delay(1000);
-      }
-    }
-    Serial.println("mDNS responder started");
-    /*return index page which is stored in serverIndex */
-    server.on("/", HTTP_GET, []() {
-      server.sendHeader("Connection", "close");
-      server.send(200, "text/html", loginIndex);
-    });
-    server.on("/serverIndex", HTTP_GET, []() {
-      server.sendHeader("Connection", "close");
-      server.send(200, "text/html", serverIndex);
-    });
-    /*handling uploading firmware file */
-    server.on("/update", HTTP_POST, []() {
-      server.sendHeader("Connection", "close");
-      server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
-      ESP.restart();
-    }, []() {
-      HTTPUpload& upload = server.upload();
-      if (upload.status == UPLOAD_FILE_START) {
-          Serial.printf("Update: %s\n", upload.filename.c_str());
-        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
-          Update.printError(Serial);
-        }
-      } else if (upload.status == UPLOAD_FILE_WRITE) {
-      /* flashing firmware to ESP*/
-        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-          Update.printError(Serial);
-        }
-      } else if (upload.status == UPLOAD_FILE_END) {
-        if (Update.end(true)) { //true to set the size to the current progress
-          Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
-        } else {
-          Update.printError(Serial);
-        }
-      }
-    });
-    server.begin();
-    OTA_SETUP_INDEX = 1;
-  }
-
-  server.handleClient();
-  delay(1);
-}
+void OTA();
 
 
 
 /***********************************Setup**********************************/
 void setup() {
+  //Pin Setup
+  pinMode(TACH_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(UPDATE_PIN, INPUT);
+  pinMode(ERROR_PIN,OUTPUT);
+
+  digitalWrite(ERROR_PIN,LOW);
+
+
   // Serial Setup
   Serial.begin(115200);
+
+
   
 
   //Setup Tach
@@ -303,15 +247,8 @@ void setup() {
 
 
   // Pin Setup
-  pinMode(TACH_PIN, INPUT);
-  pinMode(LED_PIN, OUTPUT);
-  pinMode(UPDATE_PIN, INPUT);
-  pinMode(ERROR_PIN,OUTPUT);
+  
   attachInterrupt(digitalPinToInterrupt(TACH_PIN), pulseEvent, FALLING);
-
-  if(digitalRead(GPIO_NUM_19)==HIGH){
-    digitalWrite(ERROR_PIN,HIGH);
-  }
 
 
   // Delay so no negative values occur right at startup
@@ -322,13 +259,11 @@ void setup() {
 
 /**********************Loop*************************/
 void loop() {
-  // if(digitalRead(TACH_PIN) == LOW){
-  //   digitalWrite(ERROR_PIN, HIGH);
-  //   //Serial.println("Magnet");
-  // } else{
-  //   digitalWrite(ERROR_PIN,LOW);
-  //   //Serial.println("No Magnet");
-  // }
+  if(digitalRead(TACH_PIN) == LOW){
+    digitalWrite(LED_PIN, HIGH);
+  } else if(digitalRead(TACH_PIN) == HIGH){
+    digitalWrite(LED_PIN,LOW);
+  }
   
   last_measured_time_buffer = last_measured_time;  // Buffer time so that interrupt doesn't mess with the math
   current_time = esp_timer_get_time();
@@ -389,7 +324,76 @@ void loop() {
   }
 
   //if(digitalRead(UPDATE_PIN)==HIGH){
-    //OTA();
+    OTA();
   //}
 
+}
+
+
+void OTA(){
+  if(OTA_SETUP_INDEX==0){
+      // Connect to WiFi network
+    WiFi.setHostname(host);
+    WiFi.begin(ssid, password);
+    Serial.println("");
+
+    // Wait for connection
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println("");
+    Serial.print("Connected to ");
+    Serial.println(ssid);
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    /*use mdns for host name resolution*/
+    if (!MDNS.begin(host)) { //http://esp32.local
+      Serial.println("Error setting up MDNS responder!");
+      while (1) {
+        delay(1000);
+      }
+    }
+    Serial.println("mDNS responder started");
+    /*return index page which is stored in serverIndex */
+    server.on("/", HTTP_GET, []() {
+      server.sendHeader("Connection", "close");
+      server.send(200, "text/html", loginIndex);
+    });
+    server.on("/serverIndex", HTTP_GET, []() {
+      server.sendHeader("Connection", "close");
+      server.send(200, "text/html", serverIndex);
+    });
+    /*handling uploading firmware file */
+    server.on("/update", HTTP_POST, []() {
+      server.sendHeader("Connection", "close");
+      server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
+      ESP.restart();
+    }, []() {
+      HTTPUpload& upload = server.upload();
+      if (upload.status == UPLOAD_FILE_START) {
+        Serial.printf("Update: %s\n", upload.filename.c_str());
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
+          Update.printError(Serial);
+        }
+      } else if (upload.status == UPLOAD_FILE_WRITE) {
+        /* flashing firmware to ESP*/
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+          Update.printError(Serial);
+        }
+      } else if (upload.status == UPLOAD_FILE_END) {
+        if (Update.end(true)) { //true to set the size to the current progress
+          Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+        } else {
+          Update.printError(Serial);
+        }
+      }
+    });
+    server.begin();
+    OTA_SETUP_INDEX = 1;
+  }
+
+  server.handleClient();
+  delay(1);
 }
