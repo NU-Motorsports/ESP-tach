@@ -23,7 +23,6 @@ const byte UPDATE_PIN = 18; //TEMPORARY will be replaced by CAN
 //CAN Variables
 unsigned int CAN_IDENTIFIER = 0x00;
 
-
 // Tach Variables 
 byte NUM_OF_MAGNETS = 1;           // Number of magnets around specific shaft
 unsigned long TIMEOUT = 1000000;   // Time before value zeros out. Lower for fast response, higher for reading low rpms
@@ -34,13 +33,13 @@ unsigned int last_measured_time_buffer = last_measured_time;
 unsigned int current_time = 0;
 unsigned int RPM = 0;
 
-
-//OTA Update Variables
-char* host = "TACH";
+//OTA Variables
+byte OTA_SETUP_INDEX = 0;
+const char* host = "Tach";
 const char* ssid = "NUM23";
 const char* password = "EatSand1";
-byte OTA_SETUP_INDEX = 0;
-
+int OTA_KEY = 0;
+  
 //OTA Configuration
 WebServer server(80);
 
@@ -56,7 +55,7 @@ String style =
 /* Login page */
 String loginIndex = 
 "<form name=loginForm>"
-"<h1>TACH Login</h1>"
+"<h1>Tach Login</h1>"
 "<input name=userid placeholder='User ID'> "
 "<input name=pwd placeholder=Password type=Password> "
 "<input type=submit onclick=check(this.form) class=btn value=Login></form>"
@@ -68,7 +67,7 @@ String loginIndex =
 "{alert('Error Password or Username')}"
 "}"
 "</script>" + style;
- 
+
 /* Server Index Page */
 String serverIndex = 
 "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
@@ -115,6 +114,7 @@ String serverIndex =
 "</script>" + style;
 
 
+
 /*****************Funcions*********************/
 
 //Module Select Funcions
@@ -136,85 +136,9 @@ bool right_sprag_tach() {
 
 
 //Tach Setup Functions
-void configure_tach(){
-  if (engine_rpm()) {   //ENGINE TACH
-    TACH_PIN = DIG_PIN;
-    NUM_OF_MAGNETS = 1;
-    CAN_IDENTIFIER = 0xD0;
-    host = "EngineTach";
-    Serial.println("Engine");
-  } 
-  if (gearbox_tach()) {
-    TACH_PIN = HALL_PIN;
-    NUM_OF_MAGNETS = 3;
-    CAN_IDENTIFIER = 0xC8;
-    Serial.println("Gbox");
-    host = "GearboxTach";
-  } else if(driveshaft_tach()) {
-    TACH_PIN = HALL_PIN;
-    NUM_OF_MAGNETS = 2;
-    CAN_IDENTIFIER = 0xCB;
-    Serial.println("Driveshaft");
-    host = "DriveshaftTach";
-  } else if(left_sprag_tach()) {
-    TACH_PIN = HALL_PIN;
-    NUM_OF_MAGNETS = 3;
-    CAN_IDENTIFIER = 0x13A;
-    Serial.println("Left Sprag");
-    host = "LeftSpragTach";
-  } else if(right_sprag_tach()){
-    TACH_PIN = HALL_PIN;
-    NUM_OF_MAGNETS = 3;
-    CAN_IDENTIFIER = 0x13B;
-    Serial.println("Right Sprag");
-    host = "RightSpragTach";
-  }
-}
-
-
-
-void setup_twai_driver() {      
-  twai_general_config_t general_config={
-    .mode = TWAI_MODE_NORMAL,
-    .tx_io = (gpio_num_t)GPIO_NUM_5,    //CAN TX pin is GPIO 5
-    .rx_io = (gpio_num_t)GPIO_NUM_4,    //CAN RX pin is GPIO 4
-    .clkout_io = (gpio_num_t)TWAI_IO_UNUSED,
-    .bus_off_io = (gpio_num_t)TWAI_IO_UNUSED,
-    .tx_queue_len = 0, // 0 for non-transmitting
-    .rx_queue_len = 65,
-    .alerts_enabled = TWAI_ALERT_ALL,
-    .clkout_divider = 0
-  };
-
-  twai_timing_config_t timing_config = TWAI_TIMING_CONFIG_500KBITS(); // Set Bus Speed to 500 kbit/s
-  twai_filter_config_t filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
-
-  esp_err_t error = twai_driver_install(&general_config, &timing_config, &filter_config);
-
-  if (error == ESP_OK) {
-    Serial.println("CAN Driver Installation Okay");
-  } else {
-    Serial.println("CAN Driver Installation Failed");
-    return;
-  }
-
-  error = twai_start();
-
-  if (error == ESP_OK) {
-    Serial.println("CAN Driver Started");
-  } else {
-    Serial.println("CAN Driver Failed to Start");
-  }
-
-}
-
-
-//Tach Functions
-void pulseEvent(){
-  pulse_period = esp_timer_get_time() - last_measured_time;
-  last_measured_time = esp_timer_get_time();
-}
-
+void configure_tach();
+void pulseEvent();
+void setup_twai_driver();
 
 //OTA Functions
 void OTA();
@@ -235,8 +159,6 @@ void setup() {
   // Serial Setup
   Serial.begin(115200);
 
-
-  
 
   //Setup Tach
   configure_tach();
@@ -288,7 +210,7 @@ void loop() {
   
   //Serial.println(RPM);
 
-  //CAN Message
+  //CAN Message Transmit
   twai_message_t message;
   message.identifier = CAN_IDENTIFIER;
 
@@ -306,9 +228,6 @@ void loop() {
     }
   }
   message.data_length_code = i;
-  //Serial.println();
-  //Serial.print("Data length of code is: ");
-  //Serial.println(message.data_length_code);
   
   //Queue message for transmission
   if (twai_transmit(&message, pdMS_TO_TICKS(1000))== ESP_OK) {
@@ -320,7 +239,24 @@ void loop() {
     Serial.println("]");
     
   } else {
-    //Serial.println("Failed to queue message for transmission");
+    Serial.println("Failed to queue message for transmission");
+  }
+
+
+  //CAN Message Receive
+  twai_message_t rx_frame;
+  if((twai_receive(&rx_frame,pdMS_TO_TICKS(1000))==ESP_OK) && (rx_frame.identifier==400)){
+    printf("from 0x%08x, DLC%d,Data",rx_frame.identifier,rx_frame.data_length_code);
+    for(int i =0; i<rx_frame.data_length_code;i++){
+      printf(" 0x%02x ",rx_frame.data[i]);
+    }
+    int update_key =0;
+    for(int i =0; i<(rx_frame.data_length_code-1);i++){
+      RPM = RPM + 255;
+    }
+    RPM = RPM + rx_frame.data[rx_frame.data_length_code-1];
+    printf(" RPM: %u",RPM);
+    printf("\n");
   }
 
   //if(digitalRead(UPDATE_PIN)==HIGH){
@@ -330,10 +266,94 @@ void loop() {
 }
 
 
+
+/*************************Functions******************************/
+void configure_tach(){
+  if (engine_rpm()) {   //ENGINE TACH
+    TACH_PIN = DIG_PIN;
+    NUM_OF_MAGNETS = 1;
+    CAN_IDENTIFIER = 0xD0;
+    Serial.println("Engine");
+    OTA_KEY = 3;
+  } else if (gearbox_tach()) {
+    TACH_PIN = HALL_PIN;
+    NUM_OF_MAGNETS = 3;
+    CAN_IDENTIFIER = 0xC8;
+    Serial.println("Gbox");
+    OTA_KEY = 1;
+  } else if(driveshaft_tach()) {
+    TACH_PIN = HALL_PIN;
+    NUM_OF_MAGNETS = 2;
+    CAN_IDENTIFIER = 0xCB;
+    Serial.println("Driveshaft");
+    OTA_KEY = 2;
+  } else if(left_sprag_tach()) {
+    TACH_PIN = HALL_PIN;
+    NUM_OF_MAGNETS = 3;
+    CAN_IDENTIFIER = 0x13A;
+    Serial.println("Left Sprag");
+    OTA_KEY = 4;
+  } else if(right_sprag_tach()){
+    TACH_PIN = HALL_PIN;
+    NUM_OF_MAGNETS = 3;
+    CAN_IDENTIFIER = 0x13B;
+    Serial.println("Right Sprag");
+    OTA_KEY = 5;
+  }
+}
+
+
+
+void pulseEvent(){
+  pulse_period = esp_timer_get_time() - last_measured_time;
+  last_measured_time = esp_timer_get_time();
+}
+
+
+
+void setup_twai_driver(){      
+  twai_general_config_t general_config={
+    .mode = TWAI_MODE_NORMAL,
+    .tx_io = (gpio_num_t)GPIO_NUM_5,    //CAN TX pin is GPIO 5
+    .rx_io = (gpio_num_t)GPIO_NUM_4,    //CAN RX pin is GPIO 4
+    .clkout_io = (gpio_num_t)TWAI_IO_UNUSED,
+    .bus_off_io = (gpio_num_t)TWAI_IO_UNUSED,
+    .tx_queue_len = 0, // 0 for non-transmitting
+    .rx_queue_len = 65,
+    .alerts_enabled = TWAI_ALERT_ALL,
+    .clkout_divider = 0
+  };
+
+  twai_timing_config_t timing_config = TWAI_TIMING_CONFIG_500KBITS(); // Set Bus Speed to 500 kbit/s
+  twai_filter_config_t filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
+  esp_err_t error = twai_driver_install(&general_config, &timing_config, &filter_config);
+
+  if (error == ESP_OK) {
+    Serial.println("CAN Driver Installation Okay");
+  } else {
+    Serial.println("CAN Driver Installation Failed");
+    digitalWrite(ERROR_PIN,HIGH);
+    return;
+  }
+
+  error = twai_start();
+
+  if (error == ESP_OK) {
+    Serial.println("CAN Driver Started");
+  } else {
+    Serial.println("CAN Driver Failed to Start");
+    digitalWrite(ERROR_PIN,HIGH);
+  }
+
+}
+
+
+
 void OTA(){
+  
   if(OTA_SETUP_INDEX==0){
       // Connect to WiFi network
-    WiFi.setHostname(host);
     WiFi.begin(ssid, password);
     Serial.println("");
 
