@@ -16,12 +16,11 @@ const byte ERROR_PIN = 1;
 const byte MOD_SELECT = 0;
 const byte MOD_SELECT_2 = 1;
 const byte MOD_SELECT_3 = 19;
-const byte UPDATE_PIN = 18; //TEMPORARY will be replaced by CAN
 // CAN pins are configured in the setup_twai_driver() Function
 
 
 //CAN Variables
-unsigned int CAN_IDENTIFIER = 0x00;
+unsigned int TACH_IDENTIFIER = 0x00;
 
 // Tach Variables 
 byte NUM_OF_MAGNETS = 1;           // Number of magnets around specific shaft
@@ -38,6 +37,7 @@ byte OTA_SETUP_INDEX = 0;
 const char* host = "Tach";
 const char* ssid = "NUM23";
 const char* password = "EatSand1";
+bool UPDATE_MODE = 0;
 int OTA_KEY = 0;
   
 //OTA Configuration
@@ -116,8 +116,105 @@ String serverIndex =
 
 
 /*****************Funcions*********************/
-
 //Module Select Funcions
+bool engine_rpm();
+bool gearbox_tach();
+bool driveshaft_tach();
+bool left_sprag_tach();
+bool right_sprag_tach();
+
+//Tach Setup Functions
+void configure_tach();
+void pulseEvent();
+void setup_twai_driver();
+
+//CAN Functions
+void send_message(int can_identifier, int message_contents);
+
+//OTA Functions
+void OTA();
+void check_ota_request();
+
+
+
+/***********************************Setup**********************************/
+void setup() {
+  //Pin Setup
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(ERROR_PIN,OUTPUT);
+  pinMode(MOD_SELECT,INPUT);
+  pinMode(MOD_SELECT_2,INPUT);
+  pinMode(MOD_SELECT_3,INPUT);
+
+  digitalWrite(ERROR_PIN,LOW);
+
+  
+  // Serial Setup
+  Serial.begin(115200);
+
+
+  //Setup Tach
+  configure_tach();
+  pinMode(TACH_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(TACH_PIN), pulseEvent, FALLING);
+
+
+  //Setup CAN
+  setup_twai_driver();
+
+
+  // Delay so no negative values occur right at startup
+  delay(1000);
+}
+
+
+
+/**********************Loop*************************/
+void loop() {
+  if(digitalRead(TACH_PIN) == LOW){
+    digitalWrite(LED_PIN, HIGH);
+  } else if(digitalRead(TACH_PIN) == HIGH){
+    digitalWrite(LED_PIN,LOW);
+  }
+  
+  if(UPDATE_MODE != 1){       //NORMAL OPERATION
+    last_measured_time_buffer = last_measured_time;  // Buffer time so that interrupt doesn't mess with the math
+    current_time = esp_timer_get_time();
+
+    if (current_time < last_measured_time_buffer) {
+      last_measured_time_buffer = current_time;
+      Serial.println("Inequality Triggered");
+    }
+
+    // Calculate Frequency
+    float frequency = 10000000000 / pulse_period;
+
+    // If frequency is too low => TIMEOUT
+    if (pulse_period > TIMEOUT - zero_debounce_extra || current_time - last_measured_time_buffer > TIMEOUT - zero_debounce_extra) {
+      frequency = 0;
+      zero_debounce_extra = 2000; // Change the threshold a little so it doesn't bounce
+    } else {
+      zero_debounce_extra = 0; // Reset the threshold to the normal value so it doesn't bounce
+    }
+
+    RPM = ((frequency/10000)/(NUM_OF_MAGNETS)) * 60;    //Unit conversion and consideration for number of magnets
+    
+    //CAN Message Transmit
+    send_message(TACH_IDENTIFIER,RPM);
+
+
+    //CAN Message Receive
+    
+
+
+  }else{
+    OTA();
+  }
+}
+
+
+
+/*************************Functions******************************/
 bool engine_rpm() {
   return digitalRead(MOD_SELECT) == LOW && digitalRead(MOD_SELECT_2) == LOW && digitalRead(MOD_SELECT_3) == LOW;
 }
@@ -135,168 +232,36 @@ bool right_sprag_tach() {
 }
 
 
-//Tach Setup Functions
-void configure_tach();
-void pulseEvent();
-void setup_twai_driver();
 
-//OTA Functions
-void OTA();
-
-
-
-/***********************************Setup**********************************/
-void setup() {
-  //Pin Setup
-  pinMode(TACH_PIN, INPUT);
-  pinMode(LED_PIN, OUTPUT);
-  pinMode(UPDATE_PIN, INPUT);
-  pinMode(ERROR_PIN,OUTPUT);
-
-  digitalWrite(ERROR_PIN,LOW);
-
-
-  // Serial Setup
-  Serial.begin(115200);
-
-
-  //Setup Tach
-  configure_tach();
-
-
-  //Setup CAN
-  setup_twai_driver();
-
-
-  // Pin Setup
-  
-  attachInterrupt(digitalPinToInterrupt(TACH_PIN), pulseEvent, FALLING);
-
-
-  // Delay so no negative values occur right at startup
-  delay(1000);
-}
-
-
-
-/**********************Loop*************************/
-void loop() {
-  if(digitalRead(TACH_PIN) == LOW){
-    digitalWrite(LED_PIN, HIGH);
-  } else if(digitalRead(TACH_PIN) == HIGH){
-    digitalWrite(LED_PIN,LOW);
-  }
-  
-  last_measured_time_buffer = last_measured_time;  // Buffer time so that interrupt doesn't mess with the math
-  current_time = esp_timer_get_time();
-
-  if (current_time < last_measured_time_buffer) {
-    last_measured_time_buffer = current_time;
-    Serial.println("Inequality Triggered");
-  }
-
-  // Calculate Frequency
-  float frequency = 10000000000 / pulse_period;
-
-  // If frequency is too low => TIMEOUT
-  if (pulse_period > TIMEOUT - zero_debounce_extra || current_time - last_measured_time_buffer > TIMEOUT - zero_debounce_extra) {
-    frequency = 0;
-    zero_debounce_extra = 2000; // Change the threshold a little so it doesn't bounce
-  } else {
-    zero_debounce_extra = 0; // Reset the threshold to the normal value so it doesn't bounce
-  }
-
-  RPM = ((frequency/10000)/(NUM_OF_MAGNETS)) * 60;    //Unit conversion and consideration for number of magnets
-  
-  //Serial.println(RPM);
-
-  //CAN Message Transmit
-  twai_message_t message;
-  message.identifier = CAN_IDENTIFIER;
-
-  unsigned int num = RPM;
-  
-  int i = 0;
-  while (num >= 0) {
-    uint8_t digit = num % 0x0a; // 0x0a = 10
-    message.data[i] = digit;
-    //Serial.print(message.data[i]);
-    num /= 0x0a; // num /= 10
-    i += 1;
-    if (num == 0) {
-      break;
-    }
-  }
-  message.data_length_code = i;
-  
-  //Queue message for transmission
-  if (twai_transmit(&message, pdMS_TO_TICKS(1000))== ESP_OK) {
-    Serial.print(int(message.identifier));
-    Serial.print(" is sending: [");
-    for (int x = 0; x < i; x++) {
-      Serial.print(message.data[x]);
-    }
-    Serial.println("]");
-    
-  } else {
-    Serial.println("Failed to queue message for transmission");
-  }
-
-
-  //CAN Message Receive
-  twai_message_t rx_frame;
-  if((twai_receive(&rx_frame,pdMS_TO_TICKS(1000))==ESP_OK) && (rx_frame.identifier==400)){
-    printf("from 0x%08x, DLC%d,Data",rx_frame.identifier,rx_frame.data_length_code);
-    for(int i =0; i<rx_frame.data_length_code;i++){
-      printf(" 0x%02x ",rx_frame.data[i]);
-    }
-    int update_key =0;
-    for(int i =0; i<(rx_frame.data_length_code-1);i++){
-      RPM = RPM + 255;
-    }
-    RPM = RPM + rx_frame.data[rx_frame.data_length_code-1];
-    printf(" RPM: %u",RPM);
-    printf("\n");
-  }
-
-  //if(digitalRead(UPDATE_PIN)==HIGH){
-    OTA();
-  //}
-
-}
-
-
-
-/*************************Functions******************************/
 void configure_tach(){
   if (engine_rpm()) {   //ENGINE TACH
     TACH_PIN = DIG_PIN;
     NUM_OF_MAGNETS = 1;
-    CAN_IDENTIFIER = 0xD0;
+    TACH_IDENTIFIER = 0xD0;
     Serial.println("Engine");
-    OTA_KEY = 3;
+    OTA_KEY = 3;      //Update these guys (all configurations)
   } else if (gearbox_tach()) {
     TACH_PIN = HALL_PIN;
     NUM_OF_MAGNETS = 3;
-    CAN_IDENTIFIER = 0xC8;
+    TACH_IDENTIFIER = 0xC8;
     Serial.println("Gbox");
     OTA_KEY = 1;
   } else if(driveshaft_tach()) {
     TACH_PIN = HALL_PIN;
     NUM_OF_MAGNETS = 2;
-    CAN_IDENTIFIER = 0xCB;
+    TACH_IDENTIFIER = 0xCB;
     Serial.println("Driveshaft");
     OTA_KEY = 2;
   } else if(left_sprag_tach()) {
     TACH_PIN = HALL_PIN;
     NUM_OF_MAGNETS = 3;
-    CAN_IDENTIFIER = 0x13A;
+    TACH_IDENTIFIER = 0x13A;
     Serial.println("Left Sprag");
     OTA_KEY = 4;
   } else if(right_sprag_tach()){
     TACH_PIN = HALL_PIN;
     NUM_OF_MAGNETS = 3;
-    CAN_IDENTIFIER = 0x13B;
+    TACH_IDENTIFIER = 0x13B;
     Serial.println("Right Sprag");
     OTA_KEY = 5;
   }
@@ -307,6 +272,57 @@ void configure_tach(){
 void pulseEvent(){
   pulse_period = esp_timer_get_time() - last_measured_time;
   last_measured_time = esp_timer_get_time();
+}
+
+void send_message(int can_identifier, int message_contents){
+  twai_message_t message;
+  message.identifier = can_identifier;
+  int num = message_contents;
+
+  int i = 0;
+  while (num >= 0) {
+    uint8_t digit = num % 0x0a; // 0x0a = 10
+    message.data[i] = digit;
+    num /= 0x0a; // num /= 10
+    i += 1;
+    if (num == 0) {
+      break;
+    }
+  }
+  message.data_length_code = i;
+
+  
+  //Queue message for transmission
+  if (twai_transmit(&message, pdMS_TO_TICKS(1000))== ESP_OK) {
+
+    
+  } else {      //Failed to queue message for transmitssion
+    digitalWrite(ERROR_PIN,HIGH);
+  }
+}
+
+void check_ota_request(){
+  twai_message_t rx_frame;
+  if((twai_receive(&rx_frame,pdMS_TO_TICKS(1000))==ESP_OK) && (rx_frame.identifier==400)){
+    printf("from 0x%08x, DLC%d,Data",rx_frame.identifier,rx_frame.data_length_code);
+    for(int i =0; i<rx_frame.data_length_code;i++){
+      printf(" 0x%02x ",rx_frame.data[i]);
+    }
+    int update_key =0;
+    for(int i =0; i<(rx_frame.data_length_code-1);i++){
+      update_key = update_key + 255;
+    }
+    update_key =  update_key + rx_frame.data[rx_frame.data_length_code-1];
+    printf(" Update key: %u",update_key);
+    printf("\n");
+
+    if(update_key == OTA_KEY){
+      digitalWrite(LED_PIN,HIGH);
+      digitalWrite(ERROR_PIN,HIGH);
+      UPDATE_MODE = 1;
+      detachInterrupt(digitalPinToInterrupt(TACH_PIN));
+    }
+  }
 }
 
 
@@ -351,9 +367,9 @@ void setup_twai_driver(){
 
 
 void OTA(){
-  
   if(OTA_SETUP_INDEX==0){
       // Connect to WiFi network
+    WiFi.setHostname(host);
     WiFi.begin(ssid, password);
     Serial.println("");
 
@@ -407,13 +423,13 @@ void OTA(){
           Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
         } else {
           Update.printError(Serial);
+          digitalWrite(LED_PIN,LOW);
         }
       }
     });
     server.begin();
     OTA_SETUP_INDEX = 1;
   }
-
   server.handleClient();
   delay(1);
 }
